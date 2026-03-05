@@ -138,7 +138,6 @@ jobs:
     uses: ./.github/workflows/build-windows.yml
     with:
       platform: windows_x64
-      gcc-major-version: '9'
       msvc-toolset-version: '14.3'
       msvc-toolset-architecture: 'x64'  
     if: always()
