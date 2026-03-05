@@ -39,7 +39,7 @@ on:
       platforms:
         description: 'Platform(s) to execute on (comma separated, e.g. "linux-x64, macos, aarch64")'
         required: true
-        default: 'linux-x64'
+        default: 'windows-x64'
       configure-arguments:
         description: 'Additional configure arguments'
         required: false
@@ -65,7 +65,7 @@ jobs:
       EXCLUDED_PLATFORMS: 'alpine-linux-x64'
     outputs:
       linux-x64: ${{ steps.include.outputs.linux-x64 }}
-
+      windows-x64: ${{ steps.include.outputs.linux-x64 }}
     steps:
       # TODO: Now that we are checking out the repo scripts, we can put the following code
       # into a separate file
@@ -131,6 +131,15 @@ jobs:
   ###
   ### Build jobs
   ###
+
+  build-windows-x64:
+    name: windows-x64
+    needs: prepare
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      platform: windows_x64
+      gcc-major-version: '9'
+    if: always()
 
   build-linux-x64:
     name: linux-x64
