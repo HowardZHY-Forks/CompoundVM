@@ -109,10 +109,10 @@ jobs:
       - name: 'Build'
         id: build
         run: |
-          make -f cvm.mk ${{ inputs.make-target }} MODE=${{ matrix.debug-level}}
+          make -f cvm.mk ${{ inputs.make-target }} MODE=${{ matrix.debug-level}} PLATFORM=${{ inputs.platform }}
           tar czf CompoundVM_${{ steps.version.outputs.version }}_${{ inputs.platform }}.tar.gz -C output CompoundVM_${{ steps.version.outputs.version }}_${{ inputs.platform }}
           if [[ '${{ matrix.debug-level }}' == 'release' ]]; then
-            make -f cvm.mk jvm-patch MODE=release SKIP_BUILD=true
+            make -f cvm.mk jvm-patch MODE=release SKIP_BUILD=true PLATFORM=${{ inputs.platform }}
             tar czf CompoundVM_${{ steps.version.outputs.version }}_jvm_patch_${{ inputs.platform }}.tar.gz -C output/CompoundVM_${{ steps.version.outputs.version }}_jvm_patch_${{ inputs.platform }} .
           fi
         shell: bash
