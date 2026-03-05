@@ -24,11 +24,11 @@ BOOTJDK8 := $(WORKSPACE)/.bootjdks/jdk8u452-b09
 BUILDDIR := $(WORKSPACE)/cvm/build
 VERSION := $(shell cat $(WORKSPACE)/cvm/conf/version)
 OUTPUTDIR := $(WORKSPACE)/output
-DISTRO_NAME := CompoundVM_$(VERSION)_linux_x64
-DISTRO_JVM_PATCH_NAME := CompoundVM_$(VERSION)_jvm_patch_linux_x64
+PLATFORM ?= linux_x64
+DISTRO_NAME := CompoundVM_$(VERSION)_$(PLATFORM)
+DISTRO_JVM_PATCH_NAME := CompoundVM_$(VERSION)_jvm_patch_$(PLATFORM)
 CVM8DIR := $(BUILDDIR)/jdk8
 CVM8_JARDIR := $(CVM8DIR)/jre/lib
-CVM8_LIBDIR := $(CVM8DIR)/jre/lib/amd64
 MODE ?= slowdebug
 JAR ?= $(BOOTJDK25)/bin/jar
 JDK25_SRCROOT := $(WORKSPACE)
@@ -141,14 +141,23 @@ $(JDK8_SRCROOT)/jdk:
 cvm8: jdk8vm25
 
 cvm8default25: jdk8vm25
-	echo "-server25 KNOWN" > $(CVM8_LIBDIR)/jvm.cfg
-	echo "-cvm KNOWN" >> $(CVM8_LIBDIR)/jvm.cfg
-	echo "-server KNOWN" >> $(CVM8_LIBDIR)/jvm.cfg
-	echo "-client IGNORE" >> $(CVM8_LIBDIR)/jvm.cfg
-	cp -f $(CVM8_LIBDIR)/jvm.cfg $(OUTPUTDIR)/$(DISTRO_NAME)/jre/lib/amd64/jvm.cfg
+	echo "-server25 KNOWN" > $(CVM8_JVMCFG_DIR)/jvm.cfg
+	echo "-cvm KNOWN" >> $(CVM8_JVMCFG_DIR)/jvm.cfg
+	echo "-server KNOWN" >> $(CVM8_JVMCFG_DIR)/jvm.cfg
+	echo "-client IGNORE" >> $(CVM8_JVMCFG_DIR)/jvm.cfg
+	cp -f $(CVM8_JVMCFG_DIR)/jvm.cfg $(OUTPUTDIR)/$(DISTRO_NAME)/jre/lib/amd64/jvm.cfg
 
+ifeq ($(PLATFORM),windows_x64)
+CVM8_LIBDIR := $(CVM8DIR)/jre/bin
+CVM8_JVMCFG_DIR := $(CVM8DIR)/jre/lib/amd64
+JVM_PATCH_ARTIFACTS := jre/lib/rt25.jar jre/lib/rt8.jar jre/bin/java25.dll jre/bin/jimage25.dll jre/bin/jdwp25.dll jre/bin/server25 jre/lib/amd64/jvm.cfg
+JVM_PATCH_ARTIFACTS_SOFTLINK :=
+else
+CVM8_LIBDIR := $(CVM8DIR)/jre/lib/amd64
+CVM8_JVMCFG_DIR := $(CVM8_LIBDIR)
 JVM_PATCH_ARTIFACTS := jre/lib/rt25.jar jre/lib/rt8.jar jre/lib/amd64/libjava25.so jre/lib/amd64/libjimage25.so jre/lib/amd64/libjdwp25.so jre/lib/amd64/server25 jre/lib/amd64/jvm.cfg
 JVM_PATCH_ARTIFACTS_SOFTLINK := jre/lib/amd64/cvm
+endif
 
 jvm-patch: cvm8default25
 	@echo "###### Composing CVM8 jvm patch ######"
@@ -156,7 +165,9 @@ jvm-patch: cvm8default25
 	for file in $(JVM_PATCH_ARTIFACTS); do \
 		cd $(OUTPUTDIR)/$(DISTRO_NAME) && cp -rf --parents $$file $(OUTPUTDIR)/$(DISTRO_JVM_PATCH_NAME)/; \
 	done
-	cd $(OUTPUTDIR)/$(DISTRO_NAME) && cp -a --parents $(JVM_PATCH_ARTIFACTS_SOFTLINK) $(OUTPUTDIR)/$(DISTRO_JVM_PATCH_NAME)/;
+	if [[ "x$(JVM_PATCH_ARTIFACTS_SOFTLINK)" != "x" ]]; then \
+		cd $(OUTPUTDIR)/$(DISTRO_NAME) && cp -a --parents $(JVM_PATCH_ARTIFACTS_SOFTLINK) $(OUTPUTDIR)/$(DISTRO_JVM_PATCH_NAME)/; \
+	fi
 
 -clean-jdk8vm25:
 	rm -fr $(BUILDDIR)/alt_kernel
@@ -189,21 +200,29 @@ jdk8vm25: build_jdk8u build_jdk25u altkernel
 	{ \
 		set -x; \
 		cp -Lfr $(JDK8_IMAGEDIR) $(CVM8DIR) && \
-		mkdir -p $(CVM8_LIBDIR)/server25 && \
 		cp -f $(BUILDDIR)/rt8.jar $(CVM8_JARDIR)/ && \
 		cp -f $(BUILDDIR)/rt25.jar $(CVM8_JARDIR)/ && \
-		cp -f $(SRC_BUILDDIR_25)/jdk/lib/server/libjvm.so $(CVM8_LIBDIR)/server25/libjvm.so && \
-		cp -f $(SRC_BUILDDIR_25)/jdk/lib/libjimage.so $(CVM8_LIBDIR)/libjimage25.so && \
-		cp -f $(SRC_BUILDDIR_25)/jdk/lib/libjava.so $(CVM8_LIBDIR)/libjava25.so && \
-		patchelf --set-soname libjava25.so $(CVM8_LIBDIR)/libjava25.so && \
-		cp -f $(SRC_BUILDDIR_25)/jdk/lib/libjdwp.so $(CVM8_LIBDIR)/libjdwp25.so && \
-		cp -f $(SRC_BUILDDIR_25)/jdk/lib/libjimage.debuginfo $(CVM8_LIBDIR)/libjimage25.debuginfo && \
-		cp -f $(SRC_BUILDDIR_25)/jdk/lib/libjava.debuginfo $(CVM8_LIBDIR)/libjava25.debuginfo && \
-		cp -f $(SRC_BUILDDIR_25)/jdk/lib/libjdwp.debuginfo $(CVM8_LIBDIR)/libjdwp25.debuginfo && \
-		cp -f $(SRC_BUILDDIR_25)/jdk/lib/server/libjvm.debuginfo $(CVM8_LIBDIR)/server25/libjvm.debuginfo; \
-		[[ "x$$(grep server25 $(CVM8_LIBDIR)/jvm.cfg)" = "x" ]] && echo "-server25 KNOWN" >> $(CVM8_LIBDIR)/jvm.cfg; \
-		[[ "x$$(grep cvm $(CVM8_LIBDIR)/jvm.cfg)" = "x" ]] && echo "-cvm KNOWN" >> $(CVM8_LIBDIR)/jvm.cfg; \
-		pushd $(CVM8_LIBDIR) && ln -sf server25 cvm && popd; \
+		if [[ "$(PLATFORM)" == "windows_x64" ]]; then \
+			mkdir -p $(CVM8_LIBDIR)/server25 && \
+			cp -f $(SRC_BUILDDIR_25)/jdk/bin/server/jvm.dll $(CVM8_LIBDIR)/server25/jvm.dll && \
+			cp -f $(SRC_BUILDDIR_25)/jdk/bin/jimage.dll $(CVM8_LIBDIR)/jimage25.dll && \
+			cp -f $(SRC_BUILDDIR_25)/jdk/bin/java.dll $(CVM8_LIBDIR)/java25.dll && \
+			cp -f $(SRC_BUILDDIR_25)/jdk/bin/jdwp.dll $(CVM8_LIBDIR)/jdwp25.dll; \
+		else \
+			mkdir -p $(CVM8_LIBDIR)/server25 && \
+			cp -f $(SRC_BUILDDIR_25)/jdk/lib/server/libjvm.so $(CVM8_LIBDIR)/server25/libjvm.so && \
+			cp -f $(SRC_BUILDDIR_25)/jdk/lib/libjimage.so $(CVM8_LIBDIR)/libjimage25.so && \
+			cp -f $(SRC_BUILDDIR_25)/jdk/lib/libjava.so $(CVM8_LIBDIR)/libjava25.so && \
+			patchelf --set-soname libjava25.so $(CVM8_LIBDIR)/libjava25.so && \
+			cp -f $(SRC_BUILDDIR_25)/jdk/lib/libjdwp.so $(CVM8_LIBDIR)/libjdwp25.so && \
+			cp -f $(SRC_BUILDDIR_25)/jdk/lib/libjimage.debuginfo $(CVM8_LIBDIR)/libjimage25.debuginfo && \
+			cp -f $(SRC_BUILDDIR_25)/jdk/lib/libjava.debuginfo $(CVM8_LIBDIR)/libjava25.debuginfo && \
+			cp -f $(SRC_BUILDDIR_25)/jdk/lib/libjdwp.debuginfo $(CVM8_LIBDIR)/libjdwp25.debuginfo && \
+			cp -f $(SRC_BUILDDIR_25)/jdk/lib/server/libjvm.debuginfo $(CVM8_LIBDIR)/server25/libjvm.debuginfo; \
+		fi; \
+		[[ "x$$(grep server25 $(CVM8_JVMCFG_DIR)/jvm.cfg)" = "x" ]] && echo "-server25 KNOWN" >> $(CVM8_JVMCFG_DIR)/jvm.cfg; \
+		[[ "x$$(grep cvm $(CVM8_JVMCFG_DIR)/jvm.cfg)" = "x" ]] && echo "-cvm KNOWN" >> $(CVM8_JVMCFG_DIR)/jvm.cfg; \
+		if [[ "$(PLATFORM)" != "windows_x64" ]]; then pushd $(CVM8_LIBDIR) && ln -sf server25 cvm && popd; fi; \
 		cp -rf $(CVM8DIR)/* $(OUTPUTDIR)/$(DISTRO_NAME)/; \
 	}
 ifeq ($(MODE), release)
